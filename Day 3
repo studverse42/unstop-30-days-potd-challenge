@@ -1,0 +1,85 @@
+import sys
+
+def solve():
+    # Fast I/O
+    input = sys.stdin.read
+    data = input().split()
+    
+    if not data:
+        return
+
+    idx = 0
+    N = int(data[idx])
+    M = int(data[idx+1])
+    idx += 2
+    
+    # Read threads
+    edges = []
+    for _ in range(M):
+        edges.append((int(data[idx]), int(data[idx+1])))
+        idx += 2
+        
+    Q = int(data[idx])
+    idx += 1
+    
+    # Read queries
+    queries = []
+    for _ in range(Q):
+        queries.append((int(data[idx]), int(data[idx+1])))
+        idx += 2
+
+    # DSU structures
+    parent = list(range(N + 1))
+    size = [1] * (N + 1)
+    
+    # Tracks the frequency of each cluster size
+    size_counts = [0] * (N + 1)
+    size_counts[1] = N  # Initially, all N lanterns are of size 1
+
+    def find(i):
+        # Path compression (iterative to avoid recursion overhead)
+        path = []
+        while parent[i] != i:
+            path.append(i)
+            i = parent[i]
+        for node in path:
+            parent[node] = i
+        return i
+
+    def union(i, j):
+        root_i = find(i)
+        root_j = find(j)
+        if root_i != root_j:
+            # Remove old sizes from tracker
+            size_counts[size[root_i]] -= 1
+            size_counts[size[root_j]] -= 1
+            
+            # Union by size optimization
+            if size[root_i] < size[root_j]:
+                root_i, root_j = root_j, root_i
+                
+            parent[root_j] = root_i
+            size[root_i] += size[root_j]
+            
+            # Add new size to tracker
+            size_counts[size[root_i]] += 1
+
+    ans = []
+    edge_idx = 0
+    
+    # Process queries sequentially
+    for k, t in queries:
+        # Catch up DSU state to the current moment k
+        while edge_idx < k:
+            u, v = edges[edge_idx]
+            union(u, v)
+            edge_idx += 1
+            
+        # O(1) lookup for the answer
+        ans.append(str(size_counts[t]))
+        
+    # Print the space-separated answers on a single line
+    print(" ".join(ans))
+
+if __name__ == '__main__':
+    solve()
