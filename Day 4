@@ -1,0 +1,124 @@
+import sys
+from bisect import bisect_left
+
+def solve():
+    input = sys.stdin.buffer.readline
+
+    G, F = map(int, input().split())
+
+    gates = []
+    for _ in range(G):
+        gate_id, max_size, turnaround = map(int, input().split())
+        gates.append((max_size, gate_id, turnaround))
+
+    flights = []
+    for i in range(F):
+        arrival, departure, aircraft_size = map(int, input().split())
+        flights.append((arrival, i, departure, aircraft_size))
+
+    # Sort gates by maximum size, then gate ID.
+    gates.sort()
+
+    sizes = [g[0] for g in gates]
+    ids = [g[1] for g in gates]
+    turnaround = [g[2] for g in gates]
+
+    # Sort flights by arrival time.
+    # Original index preserves booking order for equal arrivals.
+    flights.sort()
+
+    # Segment tree stores the earliest availability time.
+    INF = 10**18
+    S = 1
+    while S < G:
+        S <<= 1
+
+    seg = [0] * (2 * S)
+
+    # Unused leaves are marked INF.
+    for i in range(G, S):
+        seg[S + i] = INF
+
+    # Build segment tree.
+    for i in range(S - 1, 0, -1):
+        seg[i] = min(seg[2 * i], seg[2 * i + 1])
+
+    def update(pos, value):
+        pos += S
+        seg[pos] = value
+
+        pos >>= 1
+        while pos:
+            seg[pos] = min(seg[2 * pos], seg[2 * pos + 1])
+            pos >>= 1
+
+    def find_first(node, left, right, start, arrival):
+        # No suitable gate in this segment.
+        if right < start or seg[node] > arrival:
+            return -1
+
+        if left == right:
+            return left
+
+        mid = (left + right) // 2
+
+        # Prefer smaller gate size and then smaller ID.
+        result = find_first(
+            node * 2, left, mid, start, arrival
+        )
+
+        if result != -1:
+            return result
+
+        return find_first(
+            node * 2 + 1, mid + 1, right, start, arrival
+        )
+
+    answers = [0] * F
+    count = [0] * (G + 1)
+
+    served = 0
+
+    for arrival, original_idx, departure, aircraft_size in flights:
+
+        # First gate with sufficient maximum aircraft size.
+        start = bisect_left(sizes, aircraft_size)
+
+        if start == G:
+            continue
+
+        # Find the smallest suitable gate that is available.
+        pos = find_first(
+            1, 0, S - 1, start, arrival
+        )
+
+        if pos == -1:
+            continue
+
+        gate_id = ids[pos]
+
+        # Assign gate to this flight.
+        answers[original_idx] = gate_id
+        served += 1
+        count[gate_id] += 1
+
+        # Gate becomes available after turnaround.
+        available_time = departure + turnaround[pos]
+        update(pos, available_time)
+
+    # Find busiest gate.
+    busiest_id = 0
+    busiest_count = 0
+
+    for gate_id in range(1, G + 1):
+        if count[gate_id] > busiest_count:
+            busiest_count = count[gate_id]
+            busiest_id = gate_id
+
+    print(served)
+    print(*answers)
+    print(busiest_id, busiest_count)
+
+
+if __name__ == "__main__":
+    solve()
