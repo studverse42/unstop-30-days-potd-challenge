@@ -1,0 +1,86 @@
+from collections import deque, defaultdict
+import sys
+
+def solve():
+    # Read all input from standard input
+    input = sys.stdin.read
+    data = input().split()
+    if not data:
+        return
+    
+    N = int(data[0])
+    D = int(data[1])
+    M = int(data[2])
+    
+    # days list will store 0-indexed tuples of (species, weight)
+    days = []
+    idx = 3
+    for _ in range(N):
+        days.append((int(data[idx]), int(data[idx+1])))
+        idx += 2
+        
+    max_len = 0
+    best_start = 1
+    
+    # Deques for tracking min and max weights in the window
+    min_dq = deque()
+    max_dq = deque()
+    
+    # Hash map to track the frequency of each species in the window
+    species_count = defaultdict(int)
+    
+    L = 0
+    for R in range(N):
+        s_r, w_r = days[R]
+        
+        # 1. Update monotonic deques with the new day's weight
+        while min_dq and days[min_dq[-1]][1] >= w_r:
+            min_dq.pop()
+        min_dq.append(R)
+        
+        while max_dq and days[max_dq[-1]][1] <= w_r:
+            max_dq.pop()
+        max_dq.append(R)
+        
+        # 2. Update species frequency count
+        species_count[s_r] += 1
+        
+        # 3. Shrink the window from the left if any constraint is violated
+        while True:
+            # Check weight condition
+            curr_max = days[max_dq[0]][1]
+            curr_min = days[min_dq[0]][1]
+            
+            # Check species condition for the newly added species
+            # (Only the newly added species s_r could have exceeded M)
+            if curr_max - curr_min <= D and species_count[s_r] <= M:
+                break
+                
+            # If invalid, pop the left element
+            s_l, w_l = days[L]
+            species_count[s_l] -= 0  # safe decrease
+            if species_count[s_l] == 0:
+                del species_count[s_l]
+            else:
+                species_count[s_l] -= 1
+                if species_count[s_l] == 0:
+                    del species_count[s_l]
+            
+            # Remove from deques if the leftmost index is out of the window
+            if min_dq[0] == L:
+                min_dq.popleft()
+            if max_dq[0] == L:
+                max_dq.popleft()
+                
+            L += 1
+            
+        # 4. Record the best window length and its 1-based start index
+        curr_len = R - L + 1
+        if curr_len > max_len:
+            max_len = curr_len
+            best_start = L + 1  # Convert 0-indexed to 1-indexed
+            
+    print(f"{max_len} {best_start}")
+
+if __name__ == '__main__':
+    solve()
