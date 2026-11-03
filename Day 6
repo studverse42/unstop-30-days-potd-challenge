@@ -1,0 +1,130 @@
+import sys
+
+def solve():
+    input = sys.stdin.buffer.readline
+
+    A, K, Q = map(int, input().split())
+    fuel = [0] + list(map(int, input().split()))
+
+    # Read permits: active on inclusive interval [s, e].
+    permits = []
+    coords = []
+
+    for _ in range(K):
+        u, v, s, e = map(int, input().split())
+        permits.append((u, v, s, e))
+        coords.append(s)
+        coords.append(e + 1)
+
+    queries = []
+    for i in range(Q):
+        t, a = map(int, input().split())
+        queries.append((t, a, i))
+        coords.append(t)
+
+    # Compress all relevant time boundaries.
+    coords = sorted(set(coords))
+    size = len(coords)
+
+    def lower_bound(x):
+        lo, hi = 0, size
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if coords[mid] < x:
+                lo = mid + 1
+            else:
+                hi = mid
+        return lo
+
+    # Segment tree over compressed time points.
+    seg = [[] for _ in range(4 * size)]
+
+    def add_edge(node, left, right, ql, qr, edge):
+        if ql <= left and right <= qr:
+            seg[node].append(edge)
+            return
+
+        mid = (left + right) // 2
+        if ql <= mid:
+            add_edge(node * 2, left, mid, ql, qr, edge)
+        if qr > mid:
+            add_edge(node * 2 + 1, mid + 1, right, ql, qr, edge)
+
+    for u, v, s, e in permits:
+        l = lower_bound(s)
+        r = lower_bound(e + 1) - 1
+
+        if l <= r:
+            add_edge(1, 0, size - 1, l, r, (u, v))
+
+    # Group queries by compressed time.
+    at_time = [[] for _ in range(size)]
+    for t, a, idx in queries:
+        pos = lower_bound(t)
+        at_time[pos].append((a, idx))
+
+    # Rollback DSU: no path compression.
+    parent = list(range(A + 1))
+    comp_size = [1] * (A + 1)
+    comp_fuel = fuel[:]
+    history = []
+
+    def find(x):
+        while parent[x] != x:
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        a = find(a)
+        b = find(b)
+
+        if a == b:
+            history.append(None)
+            return
+
+        if comp_size[a] < comp_size[b]:
+            a, b = b, a
+
+        history.append((b, a, comp_size[a], comp_fuel[a]))
+
+        parent[b] = a
+        comp_size[a] += comp_size[b]
+        comp_fuel[a] += comp_fuel[b]
+
+    def rollback(snapshot):
+        while len(history) > snapshot:
+            item = history.pop()
+            if item is None:
+                continue
+
+            b, a, old_size, old_fuel = item
+            parent[b] = b
+            comp_size[a] = old_size
+            comp_fuel[a] = old_fuel
+
+    ans = [None] * Q
+
+    def dfs(node, left, right):
+        snapshot = len(history)
+
+        for u, v in seg[node]:
+            union(u, v)
+
+        if left == right:
+            for a, idx in at_time[left]:
+                root = find(a)
+                ans[idx] = f"{comp_size[root]} {comp_fuel[root]}"
+        else:
+            mid = (left + right) // 2
+            dfs(node * 2, left, mid)
+            dfs(node * 2 + 1, mid + 1, right)
+
+        rollback(snapshot)
+
+    dfs(1, 0, size - 1)
+
+    sys.stdout.write("\n".join(ans))
+
+
+if __name__ == "__main__":
+    solve()
