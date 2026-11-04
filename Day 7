@@ -1,0 +1,289 @@
+import sys
+input = sys.stdin.readline
+
+
+def merge(L, R):
+    if L is None:
+        return R
+    if R is None:
+        return L
+
+    # Segment format:
+    # 0: length
+    # 1: first value
+    # 2: last value
+    # 3: increasing prefix
+    # 4: increasing suffix
+    # 5: increasing best
+    # 6: decreasing prefix
+    # 7: decreasing suffix
+    # 8: decreasing best
+
+    n1, f1, l1, ip1, is1, ib1, dp1, ds1, db1 = L
+    n2, f2, l2, ip2, is2, ib2, dp2, ds2, db2 = R
+
+    length = n1 + n2
+
+    # Increasing sequence across the boundary.
+    if l1 < f2:
+        ip = ip1
+        if ip1 == n1:
+            ip = n1 + ip2
+
+        iss = is2
+        if is2 == n2:
+            iss = n2 + is1
+
+        ib = max(ib1, ib2, is1 + ip2)
+    else:
+        ip = ip1
+        iss = is2
+        ib = max(ib1, ib2)
+
+    # Decreasing sequence across the boundary.
+    if l1 > f2:
+        dp = dp1
+        if dp1 == n1:
+            dp = n1 + dp2
+
+        dss = ds2
+        if ds2 == n2:
+            dss = n2 + ds1
+
+        db = max(db1, db2, ds1 + dp2)
+    else:
+        dp = dp1
+        dss = ds2
+        db = max(db1, db2)
+
+    return (
+        length, f1, l2,
+        ip, iss, ib,
+        dp, dss, db
+    )
+
+
+def reverse_segment(seg):
+    if seg is None:
+        return None
+
+    n, first, last, ip, iss, ib, dp, ds, db = seg
+
+    return (
+        n, last, first,
+        ds, dp, db,
+        iss, ip, ib
+    )
+
+
+class SegmentTree:
+    def __init__(self, values):
+        n = len(values)
+
+        size = 1
+        while size < n:
+            size <<= 1
+
+        self.size = size
+        self.tree = [None] * (2 * size)
+
+        for i, x in enumerate(values):
+            self.tree[size + i] = (
+                1, x, x,
+                1, 1, 1,
+                1, 1, 1
+            )
+
+        for i in range(size - 1, 0, -1):
+            self.tree[i] = merge(
+                self.tree[2 * i],
+                self.tree[2 * i + 1]
+            )
+
+    def update(self, pos, value):
+        p = self.size + pos
+
+        self.tree[p] = (
+            1, value, value,
+            1, 1, 1,
+            1, 1, 1
+        )
+
+        p >>= 1
+
+        while p:
+            self.tree[p] = merge(
+                self.tree[2 * p],
+                self.tree[2 * p + 1]
+            )
+            p >>= 1
+
+    def query(self, left, right):
+        # Inclusive range [left, right].
+        left += self.size
+        right += self.size + 1
+
+        left_result = None
+        right_result = None
+
+        while left < right:
+            if left & 1:
+                left_result = merge(
+                    left_result,
+                    self.tree[left]
+                )
+                left += 1
+
+            if right & 1:
+                right -= 1
+                right_result = merge(
+                    self.tree[right],
+                    right_result
+                )
+
+            left >>= 1
+            right >>= 1
+
+        return merge(left_result, right_result)
+
+
+def solve():
+    N, Q = map(int, input().split())
+
+    adj = [[] for _ in range(N)]
+
+    for _ in range(N - 1):
+        u, v = map(int, input().split())
+        u -= 1
+        v -= 1
+
+        adj[u].append(v)
+        adj[v].append(u)
+
+    values = list(map(int, input().split()))
+
+    # 1. Build parent, depth and traversal order.
+    parent = [-1] * N
+    depth = [0] * N
+
+    parent[0] = 0
+    order = []
+    stack = [0]
+
+    while stack:
+        u = stack.pop()
+        order.append(u)
+
+        for v in adj[u]:
+            if v == parent[u]:
+                continue
+
+            parent[v] = u
+            depth[v] = depth[u] + 1
+            stack.append(v)
+
+    # 2. Calculate subtree sizes and heavy children.
+    subtree = [1] * N
+    heavy = [-1] * N
+
+    for u in reversed(order):
+        largest = 0
+
+        for v in adj[u]:
+            if parent[v] == u:
+                subtree[u] += subtree[v]
+
+                if subtree[v] > largest:
+                    largest = subtree[v]
+                    heavy[u] = v
+
+    # 3. Heavy-Light Decomposition.
+    head = [0] * N
+    pos = [0] * N
+    base = [0] * N
+
+    current_pos = 0
+    chain_stack = [(0, 0)]
+
+    while chain_stack:
+        u, chain_head = chain_stack.pop()
+
+        while u != -1:
+            head[u] = chain_head
+            pos[u] = current_pos
+            base[current_pos] = values[u]
+            current_pos += 1
+
+            for v in adj[u]:
+                if parent[v] == u and v != heavy[u]:
+                    chain_stack.append((v, v))
+
+            u = heavy[u]
+
+    seg = SegmentTree(base)
+
+    # 4. Directional path query from a to b.
+    def path_query(a, b):
+        left_result = None
+        right_result = None
+
+        while head[a] != head[b]:
+
+            if depth[head[a]] >= depth[head[b]]:
+                # Collect a -> head[a].
+                part = seg.query(pos[head[a]], pos[a])
+                part = reverse_segment(part)
+
+                left_result = merge(left_result, part)
+
+                a = parent[head[a]]
+
+            else:
+                # Collect head[b] -> b.
+                part = seg.query(pos[head[b]], pos[b])
+
+                right_result = merge(part, right_result)
+
+                b = parent[head[b]]
+
+        # Both nodes are now on the same chain.
+        if depth[a] >= depth[b]:
+            part = seg.query(pos[b], pos[a])
+            part = reverse_segment(part)
+
+            left_result = merge(left_result, part)
+
+        else:
+            part = seg.query(pos[a], pos[b])
+
+            right_result = merge(part, right_result)
+
+        result = merge(left_result, right_result)
+
+        return result[5]
+
+    # 5. Process operations in input order.
+    answers = []
+
+    for _ in range(Q):
+        operation = input().split()
+
+        if operation[0] == 'U':
+            v = int(operation[1]) - 1
+            x = int(operation[2])
+
+            values[v] = x
+            seg.update(pos[v], x)
+
+        else:
+            a = int(operation[1]) - 1
+            b = int(operation[2]) - 1
+
+            answers.append(str(path_query(a, b)))
+
+    sys.stdout.write("\n".join(answers))
+
+
+if __name__ == "__main__":
+    solve()
+                
